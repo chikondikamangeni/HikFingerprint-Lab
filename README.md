@@ -9,6 +9,10 @@ HikFingerprint Lab is an open-source **C# / .NET 8 Windows Forms** proof of conc
 > [!CAUTION]
 > **Not Windows Hello, not a WBDI driver, and not a Windows login or access-control product.** Do not depend on it for real-world authentication. The SDK's spoof resistance, failure rates, provenance and licensing requirements have not been independently validated. A positive or negative result in a few manual tests is not a security certification.
 
+## Interface
+
+The v0.2.0 candidate adds a compact dashboard, decorative scanning animation, separate session metrics, SDK quality reporting, and collapsible diagnostics. The graphic is illustrative and does not display actual fingerprint images.
+
 ## Features
 
 | Feature | Status |
@@ -34,7 +38,7 @@ HikFingerprint Lab is an open-source **C# / .NET 8 Windows Forms** proof of conc
 - Close iVMS-4200 before using the scanner from this app. The vendor SDK and its dependencies **are not included** in this repository.
 
 > [!NOTE]
-> The current interop source deliberately uses the tested absolute path above. Other iVMS installation locations require updating `FingerprintSdk.DllPath` and its P/Invoke DLL path before building. Compatibility with other SDK versions or scanners is not guaranteed.
+> The app checks common iVMS locations under Program Files (x86) and Program Files. Use **SDK location** to select `FPModule_SDK_x64.dll` from a trusted local installation if it is elsewhere; the selection lasts for the current session. Once loaded, restart before selecting another SDK. **Test scanner** checks library exports and device connection without collecting a fingerprint. Compatibility with other SDK versions or scanners is not guaranteed.
 
 ## Quick start
 

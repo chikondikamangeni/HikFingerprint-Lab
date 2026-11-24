@@ -9,9 +9,10 @@
     <Prefer32Bit>false</Prefer32Bit>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AssemblyName>HikFingerprintLabV2</AssemblyName>
-    <Version>0.1.0</Version>
-    <FileVersion>0.1.0.0</FileVersion>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <Version>0.2.0</Version>
+    <FileVersion>0.2.0.0</FileVersion>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <ApplicationIcon>assets/app.ico</ApplicationIcon>
     <RootNamespace>HikFingerprintLab</RootNamespace>
   </PropertyGroup>
 </Project>
