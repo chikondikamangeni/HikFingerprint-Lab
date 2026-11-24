@@ -1,0 +1,40 @@
+# Build and IDE output
+bin/
+obj/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+TestResults/
+
+# Private biometric data: never commit enrollments, captures, logs or dumps
+enrollment.dpapi
+*.dpapi
+*.fpt
+*.template
+*.fingerprint
+*.dmp
+*.mdmp
+crashdumps/
+logs/
+
+# Vendor binaries: user must source these from the licensed installation
+FPModule*.dll
+HCUSBSDK.dll
+HCNetSDK.dll
+libusb-1.0.dll
+
+# Credential, local config and key material
+.env
+.env.*
+!/.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+secrets.json
+
+# OS
+.DS_Store
+Thumbs.db
