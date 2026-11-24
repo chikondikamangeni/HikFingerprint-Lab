@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -29,6 +30,8 @@ internal sealed class MainForm : Form
     private readonly Label _unexpected;
     private readonly FingerprintGraphic _graphic;
     private readonly Button _logToggle;
+    private readonly Button _sdkButton;
+    private readonly Button _testButton;
     private readonly TableLayoutPanel _root;
     private int? _lastQuality;
     private bool _logsVisible;
@@ -52,7 +55,7 @@ internal sealed class MainForm : Form
         _root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         foreach (int h in new[] { 70, 65 }) _root.RowStyles.Add(new RowStyle(SizeType.Absolute, h));
         _root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        foreach (int h in new[] { 58, 38, 90, 40, 0 }) _root.RowStyles.Add(new RowStyle(SizeType.Absolute, h));
+        foreach (int h in new[] { 58, 38, 112, 44, 0 }) _root.RowStyles.Add(new RowStyle(SizeType.Absolute, h));
         Controls.Add(_root);
 
         var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
@@ -108,10 +111,21 @@ internal sealed class MainForm : Form
 
         _logToggle = MakeButton("Show diagnostics  +", Color.FromArgb(34, 42, 56));
         _logToggle.TextAlign = ContentAlignment.MiddleLeft;
-        _root.Controls.Add(_logToggle, 0, 6);
+        var tools = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
+        tools.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+        tools.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+        tools.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+        _sdkButton = MakeButton("SDK location", Color.FromArgb(34, 42, 56));
+        _testButton = MakeButton("Test scanner", Color.FromArgb(34, 42, 56));
+        tools.Controls.Add(_logToggle, 0, 0);
+        tools.Controls.Add(_sdkButton, 1, 0);
+        tools.Controls.Add(_testButton, 2, 0);
+        _root.Controls.Add(tools, 0, 6);
         _log = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = PanelBackground, ForeColor = TextColor, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Consolas", 10f), WordWrap = true, TabStop = false, Visible = false };
         _root.Controls.Add(_log, 0, 7);
         _logToggle.Click += (_, _) => ToggleLogs();
+        _sdkButton.Click += (_, _) => SelectSdkClicked();
+        _testButton.Click += async (_, _) => await TestScannerAsync();
         _enrollButton.Click += async (_, _) => await EnrollClickedAsync();
         _verifyButton.Click += async (_, _) => await VerifyClickedAsync();
         _clearButton.Click += (_, _) => ClearClicked();
@@ -119,7 +133,8 @@ internal sealed class MainForm : Form
         _timer.Tick += (_, _) => { _graphic.Advance(_busy); if (!_busy) UpdateUi(); };
         _timer.Start();
         UpdateUi();
-        Append("Ready. Uses FPModule SDK already installed with iVMS-4200.");
+        Append("Ready. Uses an existing, trusted Hikvision SDK installation.");
+        ReportSdkLocation();
         Append("Check 'Remember enrollment' BEFORE enrolling to save it with Windows-user DPAPI encryption.");
         if (_engine.HasSavedEnrollment) Append("Encrypted enrollment file found for this Windows user. Verify Finger to test it.");
     }
@@ -127,7 +142,7 @@ internal sealed class MainForm : Form
     private Control Metric(string title, out Label value)
     {
         var panel = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = PanelBackground, Margin = new Padding(3), Padding = new Padding(9, 5, 9, 5), RowCount = 2, ColumnCount = 1 };
-        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 60)); panel.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 58)); panel.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
         value = new Label { Text = "—", Dock = DockStyle.Fill, Font = new Font("Segoe UI", 19f, FontStyle.Bold), TextAlign = ContentAlignment.MiddleCenter, ForeColor = TextColor };
         panel.Controls.Add(value, 0, 0);
         panel.Controls.Add(new Label { Text = title, ForeColor = Secondary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 9f) }, 0, 1);
@@ -147,6 +162,62 @@ internal sealed class MainForm : Form
         _log.Visible = _logsVisible;
         _logToggle.Text = _logsVisible ? "Hide diagnostics  −" : "Show diagnostics  +";
         _root.RowStyles[7].Height = _logsVisible ? Math.Min(150, Math.Max(90, ClientSize.Height / 5)) : 0;
+    }
+
+    private void ReportSdkLocation()
+    {
+        try { Append(FingerprintSdk.DescribeSdk()); }
+        catch (Exception ex) { Append("SDK inspection failed: " + ex.Message); }
+    }
+
+    private void SelectSdkClicked()
+    {
+        if (_busy) return;
+        if (!_logsVisible) ToggleLogs();
+        ReportSdkLocation();
+        if (!FingerprintSdk.CanChangeLocation)
+        {
+            MessageBox.Show(this, "The SDK is already loaded. Restart the app to select another installation.",
+                "SDK location", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        if (MessageBox.Show(this,
+            "Only select the DLL from your own trusted, legitimately installed Hikvision software. " +
+            "Native libraries execute code. Compatibility is not guaranteed. Selection applies to this app session only. Continue?",
+            "SDK location", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Select the installed Hikvision fingerprint SDK",
+            Filter = "Hikvision fingerprint SDK (FPModule_SDK_x64.dll)|FPModule_SDK_x64.dll",
+            FileName = FingerprintSdk.DllName,
+            CheckFileExists = true, CheckPathExists = true, Multiselect = false
+        };
+        string? path = FingerprintSdk.SdkPath;
+        if (path is not null) dialog.InitialDirectory = Path.GetDirectoryName(path)!;
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try { FingerprintSdk.SelectSdk(dialog.FileName); ReportSdkLocation(); SetStatus("SDK location selected."); }
+        catch (Exception ex) { Append("ERROR: " + ex.Message); SetStatus("SDK selection failed."); }
+    }
+
+    private async Task TestScannerAsync()
+    {
+        if (_busy) return;
+        if (!_logsVisible) ToggleLogs();
+        ReportSdkLocation();
+        SetBusy(true);
+        SetStatus("Testing scanner connection...");
+        try
+        {
+            await Task.Run(() => FingerprintSdk.TestConnection(ReportFromWorker));
+            SetStatus("Scanner connection successful.");
+            Append("Scanner opened and configured successfully. No fingerprint collected.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Scanner connection failed.");
+            Append("ERROR: " + ex.Message);
+        }
+        finally { SetBusy(false); }
     }
 
     private async Task EnrollClickedAsync()
@@ -267,6 +338,8 @@ internal sealed class MainForm : Form
         _verifyButton.Enabled = !_busy && enrolled && _engine.CooldownRemaining <= TimeSpan.Zero;
         _clearButton.Enabled = !_busy && enrolled;
         _remember.Enabled = !_busy;
+        _sdkButton.Enabled = !_busy;
+        _testButton.Enabled = !_busy;
         _enrollment.Text = enrolled
             ? (_engine.HasSavedEnrollment ? "Enrollment: Encrypted file for this Windows user"
                 : "Enrollment: In memory for this session")

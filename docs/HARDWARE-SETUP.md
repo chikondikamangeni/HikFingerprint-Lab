@@ -1,9 +1,9 @@
 # Hardware and SDK setup
 
 1. Install a legitimate, compatible Hikvision iVMS-4200 package on Windows x64.
-2. Check that `FPModule_SDK_x64.dll` exists at the path documented in the [README](../README.md). SDK release observed in testing: `FPModuleSDK_Win_x64_V2.2.1_Build200227`.
+2. Check the common iVMS installation path in the [README](../README.md). If necessary, use **SDK location** to select the existing trusted SDK DLL (session-only). SDK release observed in testing: `FPModuleSDK_Win_x64_V2.2.1_Build200227`.
 3. Connect the DS-K1F820-F directly to USB. Fully close iVMS-4200 before starting this app.
-4. Run `dotnet run --project .\HikFingerprintLabV2.csproj --configuration Release` from the project root.
+4. Run `dotnet run --project .\HikFingerprintLabV2.csproj --configuration Release` from the project root. Use **Test scanner** to check the connection without collecting a fingerprint.
 
 ## Troubleshooting
 

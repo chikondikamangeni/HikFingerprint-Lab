@@ -38,7 +38,7 @@ The v0.2.0 candidate adds a compact dashboard, decorative scanning animation, se
 - Close iVMS-4200 before using the scanner from this app. The vendor SDK and its dependencies **are not included** in this repository.
 
 > [!NOTE]
-> The current interop source deliberately uses the tested absolute path above. Other iVMS installation locations require updating `FingerprintSdk.DllPath` and its P/Invoke DLL path before building. Compatibility with other SDK versions or scanners is not guaranteed.
+> The app checks common iVMS locations under Program Files (x86) and Program Files. Use **SDK location** to select `FPModule_SDK_x64.dll` from a trusted local installation if it is elsewhere; the selection lasts for the current session. Once loaded, restart before selecting another SDK. **Test scanner** checks library exports and device connection without collecting a fingerprint. Compatibility with other SDK versions or scanners is not guaranteed.
 
 ## Quick start
 

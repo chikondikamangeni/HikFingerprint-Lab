@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -13,40 +16,122 @@ namespace HikFingerprintLab;
 /// </summary>
 internal static class FingerprintSdk
 {
-    internal const string DllPath =
-        @"C:\Program Files (x86)\iVMS-4200 Site\iVMS-4200 Client\Client\FPModule_SDK_x64.dll";
+    internal const string DllName = "FPModule_SDK_x64.dll";
+    private static string? _selectedPath;
+    private static IntPtr _module;
+    private static readonly string[] RequiredExports =
+    {
+        "FPModule_OpenDevice", "FPModule_CloseDevice", "FPModule_SetTimeout",
+        "FPModule_SetCollectTimes", "FPModule_DetectFinger", "FPModule_FpEnroll",
+        "FPModule_GetQuality", "FPModule_MatchTemplate"
+    };
+
+    static FingerprintSdk()
+    {
+        NativeLibrary.SetDllImportResolver(typeof(FingerprintSdk).Assembly, ResolveImport);
+    }
+
+    internal static string? SdkPath => _selectedPath ?? FindInstalledSdk();
+    internal static bool CanChangeLocation => _module == IntPtr.Zero;
+
+    private static string? FindInstalledSdk()
+    {
+        foreach (string root in new[] {
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) })
+        {
+            if (string.IsNullOrWhiteSpace(root)) continue;
+            foreach (string product in new[] { "iVMS-4200 Site", "iVMS-4200" })
+            {
+                string candidate = Path.Combine(root, product, "iVMS-4200 Client", "Client", DllName);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+        return null;
+    }
+
+    internal static void SelectSdk(string path)
+    {
+        if (!CanChangeLocation) throw new InvalidOperationException("Restart the app before changing the loaded SDK.");
+        string full = Path.GetFullPath(path);
+        string root = Path.GetPathRoot(full) ?? "";
+        if (root.Length != 3 || root[1] != ':' || new DriveInfo(root).DriveType != DriveType.Fixed)
+            throw new InvalidOperationException("Select the SDK from a local fixed drive.");
+        if (!string.Equals(Path.GetFileName(full), DllName, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
+            throw new FileNotFoundException("Select the existing FPModule_SDK_x64.dll from a trusted Hikvision installation.");
+        _selectedPath = full;
+    }
+
+    internal static string DescribeSdk()
+    {
+        string? path = SdkPath;
+        if (path is null) return "SDK not found. Use SDK location to select a trusted installation.";
+        return $"SDK: {path} | File version: {FileVersionInfo.GetVersionInfo(path).FileVersion ?? "unknown"}";
+    }
+
+    private static IntPtr ResolveImport(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+    {
+        if (!string.Equals(libraryName, DllName, StringComparison.Ordinal)) return IntPtr.Zero;
+        if (_module == IntPtr.Zero) throw new DllNotFoundException("SDK has not been explicitly loaded.");
+        return _module;
+    }
+
+    private static void EnsureLibraryLoaded()
+    {
+        if (_module != IntPtr.Zero) return;
+        string path = SdkPath ?? throw new FileNotFoundException("Hikvision SDK not found. Use SDK location to select it.");
+        // Explicit absolute path; dependencies searched in the SDK folder and System32.
+        // LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32
+        IntPtr module = LoadLibraryExW(path, IntPtr.Zero, 0x00000100 | 0x00000800);
+        if (module == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not load the SDK or its dependencies.");
+        try
+        {
+            foreach (string name in RequiredExports)
+                if (!NativeLibrary.TryGetExport(module, name, out _))
+                    throw new EntryPointNotFoundException($"SDK does not export {name}.");
+            _selectedPath = path;
+            _module = module; // Keep the module loaded until process exit; P/Invoke caches addresses.
+        }
+        catch
+        {
+            NativeLibrary.Free(module);
+            throw;
+        }
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+    private static extern IntPtr LoadLibraryExW(string path, IntPtr file, uint flags);
+
+    internal static void TestConnection(Action<string> report) =>
+        WithDevice(report, () => true);
 
     private const int TemplateSize = 512;
     private const int SecurityLevel = 4;
 
-    [DllImport(DllPath, EntryPoint = "FPModule_OpenDevice", CallingConvention = CallingConvention.StdCall)]
+    [DllImport(DllName, EntryPoint = "FPModule_OpenDevice", CallingConvention = CallingConvention.StdCall)]
     private static extern int OpenDevice();
 
-    [DllImport(DllPath, EntryPoint = "FPModule_CloseDevice", CallingConvention = CallingConvention.StdCall)]
+    [DllImport(DllName, EntryPoint = "FPModule_CloseDevice", CallingConvention = CallingConvention.StdCall)]
     private static extern int CloseDevice();
 
-    [DllImport(DllPath, EntryPoint = "FPModule_SetTimeout", CallingConvention = CallingConvention.StdCall)]
+    [DllImport(DllName, EntryPoint = "FPModule_SetTimeout", CallingConvention = CallingConvention.StdCall)]
     private static extern int SetTimeout(int seconds);
 
-    [DllImport(DllPath, EntryPoint = "FPModule_SetCollectTimes", CallingConvention = CallingConvention.StdCall)]
+    [DllImport(DllName, EntryPoint = "FPModule_SetCollectTimes", CallingConvention = CallingConvention.StdCall)]
     private static extern int SetCollectTimes(int count);
 
-    [DllImport(DllPath, EntryPoint = "FPModule_DetectFinger", CallingConvention = CallingConvention.StdCall)]
+    [DllImport(DllName, EntryPoint = "FPModule_DetectFinger", CallingConvention = CallingConvention.StdCall)]
     private static extern int DetectFinger(ref int status);
 
-    [DllImport(DllPath, EntryPoint = "FPModule_FpEnroll", CallingConvention = CallingConvention.StdCall)]
+    [DllImport(DllName, EntryPoint = "FPModule_FpEnroll", CallingConvention = CallingConvention.StdCall)]
     private static extern int Enroll([Out] byte[] templateData);
 
-    [DllImport(DllPath, EntryPoint = "FPModule_GetQuality", CallingConvention = CallingConvention.StdCall)]
+    [DllImport(DllName, EntryPoint = "FPModule_GetQuality", CallingConvention = CallingConvention.StdCall)]
     private static extern int GetQuality([In] byte[] templateData);
 
-    [DllImport(DllPath, EntryPoint = "FPModule_MatchTemplate", CallingConvention = CallingConvention.StdCall)]
+    [DllImport(DllName, EntryPoint = "FPModule_MatchTemplate", CallingConvention = CallingConvention.StdCall)]
     private static extern int MatchTemplate(
         [In] byte[] templateA, [In] byte[] templateB, int securityLevel);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetDllDirectory(string? path);
 
     internal sealed record EnrollmentResult(byte[] Template, int Quality);
     internal sealed record VerificationResult(int MatchCode, int Quality);
@@ -80,15 +165,8 @@ internal static class FingerprintSdk
         if (!Environment.Is64BitProcess)
             throw new InvalidOperationException("This prototype must run as a 64-bit process.");
 
-        if (!File.Exists(DllPath))
-            throw new FileNotFoundException(
-                "Hikvision SDK not found. Install/retain the existing iVMS-4200 installation.", DllPath);
-
-        var folder = Path.GetDirectoryName(DllPath)!;
+        EnsureLibraryLoaded();
         bool opened = false;
-
-        if (!SetDllDirectory(folder))
-            throw new InvalidOperationException("Could not configure the Hikvision SDK library directory.");
 
         try
         {
@@ -105,7 +183,6 @@ internal static class FingerprintSdk
             {
                 try { _ = CloseDevice(); } catch { /* keep the original error if one occurred */ }
             }
-            _ = SetDllDirectory(null);
         }
     }
 
