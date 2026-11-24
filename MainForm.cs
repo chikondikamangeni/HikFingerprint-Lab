@@ -10,7 +10,6 @@ internal sealed class MainForm : Form
     private readonly FingerprintVerificationService _engine = new();
     private readonly Label _status;
     private readonly Label _enrollment;
-    private readonly Label _stats;
     private readonly TextBox _log;
     private readonly CheckBox _remember;
     private readonly Button _enrollButton;
@@ -24,132 +23,131 @@ internal sealed class MainForm : Form
     private static readonly Color TextColor = Color.FromArgb(237, 241, 247);
     private static readonly Color Secondary = Color.FromArgb(177, 188, 204);
 
+    private readonly Label _quality;
+    private readonly Label _matches;
+    private readonly Label _rejects;
+    private readonly Label _unexpected;
+    private readonly FingerprintGraphic _graphic;
+    private readonly Button _logToggle;
+    private readonly TableLayoutPanel _root;
+    private int? _lastQuality;
+    private bool _logsVisible;
+
     public MainForm()
     {
-        Text = "HikFingerprint Lab V2 — DS-K1F820-F";
-        ClientSize = new Size(825, 605);
-        MinimumSize = new Size(745, 565);
+        Text = "HikFingerprint Lab — v0.2.0";
+        ClientSize = new Size(880, 760);
+        MinimumSize = new Size(760, 720);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Background;
         ForeColor = TextColor;
         Font = new Font("Segoe UI", 10f);
+        Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
-        var root = new TableLayoutPanel
+        _root = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 6,
-            Padding = new Padding(22),
-            BackColor = Background
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 8,
+            Padding = new Padding(24), BackColor = Background
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 75));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 75));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        Controls.Add(root);
+        _root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        foreach (int h in new[] { 70, 65 }) _root.RowStyles.Add(new RowStyle(SizeType.Absolute, h));
+        _root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        foreach (int h in new[] { 58, 38, 90, 40, 0 }) _root.RowStyles.Add(new RowStyle(SizeType.Absolute, h));
+        Controls.Add(_root);
 
-        var header = new Panel { Dock = DockStyle.Fill, BackColor = Background };
-        header.Controls.Add(new Label
-        {
-            Text = "HikFingerprint Lab  /  V2",
-            Font = new Font("Segoe UI", 19f, FontStyle.Bold),
-            ForeColor = TextColor, Location = new Point(0, 0), AutoSize = true
-        });
-        header.Controls.Add(new Label
-        {
-            Text = "Hikvision DS-K1F820-F    •    Windows .NET 8 x64    •    Local verification prototype",
-            Font = new Font("Segoe UI", 9f),
-            ForeColor = Secondary, Location = new Point(2, 43), AutoSize = true
-        });
-        root.Controls.Add(header, 0, 0);
+        var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 115));
+        header.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        header.Controls.Add(new Label { Text = "HikFingerprint Lab", Font = new Font("Segoe UI", 22f, FontStyle.Bold), ForeColor = TextColor, Dock = DockStyle.Fill }, 0, 0);
+        header.Controls.Add(new Label { Text = "v0.2.0  /  LAB", ForeColor = Secondary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleRight }, 1, 0);
+        var subtitle = new Label { Text = "DS-K1F820-F  •  Windows x64  •  Local biometric research", ForeColor = Secondary, Dock = DockStyle.Fill };
+        header.Controls.Add(subtitle, 0, 1); header.SetColumnSpan(subtitle, 2);
+        _root.Controls.Add(header, 0, 0);
 
-        root.Controls.Add(new Label
+        _root.Controls.Add(new Label
         {
-            Text = "LAB ONLY — Does NOT unlock Windows. Optional saved enrollment uses Windows-user DPAPI encryption; other software running as you may still decrypt it. No account password is stored.",
-            ForeColor = Color.FromArgb(254, 209, 131),
-            BackColor = PanelBackground, Dock = DockStyle.Fill,
-            Padding = new Padding(12), TextAlign = ContentAlignment.MiddleLeft
+            Text = "EXPERIMENTAL ONLY — Does not unlock Windows. Saved enrollment is optional and uses Windows-user DPAPI; other software running as you may decrypt it.",
+            ForeColor = Color.FromArgb(254, 209, 131), BackColor = PanelBackground,
+            Dock = DockStyle.Fill, Padding = new Padding(12, 6, 12, 6), TextAlign = ContentAlignment.MiddleLeft
         }, 0, 1);
 
-        var statePanel = new Panel
-        {
-            BackColor = PanelBackground, Dock = DockStyle.Fill,
-            Padding = new Padding(12)
-        };
-        _status = new Label
-        {
-            Text = "Status: Ready. Close iVMS-4200 and connect your scanner.",
-            ForeColor = TextColor, Dock = DockStyle.Top, AutoEllipsis = true, Height = 28
-        };
-        _enrollment = new Label
-        {
-            Text = "Enrollment: None", ForeColor = Secondary,
-            Dock = DockStyle.Top, Height = 28
-        };
-        _stats = new Label
-        {
-            Text = "This session: 0 matches  •  0 rejections  •  0 unexpected codes",
-            ForeColor = Secondary, Dock = DockStyle.Top, Height = 28
-        };
-        // Dock order is reversed during layout.
-        statePanel.Controls.Add(_stats);
-        statePanel.Controls.Add(_enrollment);
-        statePanel.Controls.Add(_status);
-        root.Controls.Add(statePanel, 0, 2);
+        var hero = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = PanelBackground, ColumnCount = 1, RowCount = 4, Padding = new Padding(14, 4, 14, 8) };
+        hero.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        hero.RowStyles.Add(new RowStyle(SizeType.Absolute, 33));
+        hero.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        hero.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+        _graphic = new FingerprintGraphic { Dock = DockStyle.Fill };
+        hero.Controls.Add(_graphic, 0, 0);
+        _status = new Label { Text = "Status: Ready for a scan", ForeColor = TextColor, Font = new Font("Segoe UI", 15f, FontStyle.Bold), Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, AutoEllipsis = true };
+        hero.Controls.Add(_status, 0, 1);
+        _enrollment = new Label { ForeColor = Secondary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter };
+        hero.Controls.Add(_enrollment, 0, 2);
+        var hint = new Label { Text = "Close iVMS-4200 before starting. Follow the scan prompts.", ForeColor = Secondary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 9f) };
+        hero.Controls.Add(hint, 0, 3);
+        _root.Controls.Add(hero, 0, 2);
 
-        _remember = new CheckBox
-        {
-            Text = "Remember enrollment for this Windows user (encrypted local file)",
-            Checked = _engine.HasSavedEnrollment,
-            ForeColor = TextColor, BackColor = Background,
-            Dock = DockStyle.Fill, Padding = new Padding(2, 10, 0, 0), AutoSize = false
-        };
-        root.Controls.Add(_remember, 0, 3);
+        var buttons = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(0, 6, 0, 1) };
+        for (int i = 0; i < 3; i++) buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3));
+        _enrollButton = MakeButton("Enroll / Replace", Color.FromArgb(37, 99, 235));
+        _verifyButton = MakeButton("Verify Finger", Color.FromArgb(25, 115, 80));
+        _clearButton = MakeButton("Clear Enrollment", Color.FromArgb(52, 62, 78));
+        buttons.Controls.Add(_enrollButton, 0, 0); buttons.Controls.Add(_verifyButton, 1, 0); buttons.Controls.Add(_clearButton, 2, 0);
+        _root.Controls.Add(buttons, 0, 3);
+        _remember = new CheckBox { Text = "Remember enrollment for this Windows user (encrypted local file)", Checked = _engine.HasSavedEnrollment, ForeColor = TextColor, BackColor = Background, Dock = DockStyle.Fill };
+        _root.Controls.Add(_remember, 0, 4);
 
-        var buttons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill, BackColor = Background,
-            Padding = new Padding(0, 11, 0, 6), WrapContents = false
-        };
-        _enrollButton = MakeButton("Enroll / Replace", Color.FromArgb(41, 118, 233), 171);
-        _verifyButton = MakeButton("Verify Finger", Color.FromArgb(41, 136, 91), 158);
-        _clearButton = MakeButton("Clear All Enrollment", Color.FromArgb(78, 86, 103), 194);
-        buttons.Controls.Add(_enrollButton);
-        buttons.Controls.Add(_verifyButton);
-        buttons.Controls.Add(_clearButton);
-        root.Controls.Add(buttons, 0, 4);
+        var metrics = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1 };
+        for (int i = 0; i < 4; i++) metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        metrics.Controls.Add(Metric("Matches", out _matches), 0, 0);
+        metrics.Controls.Add(Metric("Rejections", out _rejects), 1, 0);
+        metrics.Controls.Add(Metric("SDK quality", out _quality), 2, 0);
+        metrics.Controls.Add(Metric("Other codes", out _unexpected), 3, 0);
+        _root.Controls.Add(metrics, 0, 5);
 
-        _log = new TextBox
-        {
-            Dock = DockStyle.Fill, Multiline = true, ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical, BackColor = PanelBackground,
-            ForeColor = TextColor, BorderStyle = BorderStyle.FixedSingle,
-            Font = new Font("Consolas", 10f), WordWrap = true, TabStop = false
-        };
-        root.Controls.Add(_log, 0, 5);
-
+        _logToggle = MakeButton("Show diagnostics  +", Color.FromArgb(34, 42, 56));
+        _logToggle.TextAlign = ContentAlignment.MiddleLeft;
+        _root.Controls.Add(_logToggle, 0, 6);
+        _log = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = PanelBackground, ForeColor = TextColor, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Consolas", 10f), WordWrap = true, TabStop = false, Visible = false };
+        _root.Controls.Add(_log, 0, 7);
+        _logToggle.Click += (_, _) => ToggleLogs();
         _enrollButton.Click += async (_, _) => await EnrollClickedAsync();
         _verifyButton.Click += async (_, _) => await VerifyClickedAsync();
         _clearButton.Click += (_, _) => ClearClicked();
-
-        _timer = new System.Windows.Forms.Timer { Interval = 1000 };
-        _timer.Tick += (_, _) => UpdateUi();
+        _timer = new System.Windows.Forms.Timer { Interval = 100 };
+        _timer.Tick += (_, _) => { _graphic.Advance(_busy); if (!_busy) UpdateUi(); };
         _timer.Start();
         UpdateUi();
         Append("Ready. Uses FPModule SDK already installed with iVMS-4200.");
         Append("Check 'Remember enrollment' BEFORE enrolling to save it with Windows-user DPAPI encryption.");
-        if (_engine.HasSavedEnrollment)
-            Append("Encrypted enrollment file found for this Windows user. Verify Finger to test it.");
+        if (_engine.HasSavedEnrollment) Append("Encrypted enrollment file found for this Windows user. Verify Finger to test it.");
     }
 
-    private static Button MakeButton(string title, Color color, int width) => new()
+    private Control Metric(string title, out Label value)
     {
-        Text = title, BackColor = color, ForeColor = Color.White,
-        FlatStyle = FlatStyle.Flat, Width = width, Height = 43,
-        Margin = new Padding(0, 0, 12, 0), Cursor = Cursors.Hand
-    };
+        var panel = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = PanelBackground, Margin = new Padding(3), Padding = new Padding(9, 5, 9, 5), RowCount = 2, ColumnCount = 1 };
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 60)); panel.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        value = new Label { Text = "—", Dock = DockStyle.Fill, Font = new Font("Segoe UI", 19f, FontStyle.Bold), TextAlign = ContentAlignment.MiddleCenter, ForeColor = TextColor };
+        panel.Controls.Add(value, 0, 0);
+        panel.Controls.Add(new Label { Text = title, ForeColor = Secondary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 9f) }, 0, 1);
+        return panel;
+    }
+
+    private static Button MakeButton(string title, Color color)
+    {
+        var b = new Button { Text = title, BackColor = color, ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Dock = DockStyle.Fill, Margin = new Padding(3), Cursor = Cursors.Hand, UseVisualStyleBackColor = false };
+        b.FlatAppearance.BorderSize = 0;
+        return b;
+    }
+
+    private void ToggleLogs()
+    {
+        _logsVisible = !_logsVisible;
+        _log.Visible = _logsVisible;
+        _logToggle.Text = _logsVisible ? "Hide diagnostics  −" : "Show diagnostics  +";
+        _root.RowStyles[7].Height = _logsVisible ? Math.Min(150, Math.Max(90, ClientSize.Height / 5)) : 0;
+    }
 
     private async Task EnrollClickedAsync()
     {
@@ -167,6 +165,7 @@ internal sealed class MainForm : Form
         try
         {
             int quality = await Task.Run(() => _engine.Enroll(remember, ReportFromWorker));
+            _lastQuality = quality;
             SetStatus("Enrollment complete.");
             Append($"Enrollment succeeded. Quality {quality}; " +
                 (remember ? "saved encrypted for current Windows user." : "held in memory only."));
@@ -191,6 +190,7 @@ internal sealed class MainForm : Form
         try
         {
             var result = await Task.Run(() => _engine.Verify(ReportFromWorker));
+            _lastQuality = result.Quality;
             if (result.MatchCode == 0)
             {
                 SetStatus("SDK result: MATCH (0)");
@@ -233,6 +233,7 @@ internal sealed class MainForm : Form
         {
             _engine.ClearAll();
             _remember.Checked = false;
+            _lastQuality = null;
             SetStatus("Enrollment cleared.");
             Append("Enrollment cleared: local saved file deleted and managed memory cleared (best effort).");
         }
@@ -270,8 +271,10 @@ internal sealed class MainForm : Form
             ? (_engine.HasSavedEnrollment ? "Enrollment: Encrypted file for this Windows user"
                 : "Enrollment: In memory for this session")
             : "Enrollment: None";
-        _stats.Text = $"This session: {_engine.Matches} matches  •  {_engine.NonMatches} rejections  •  " +
-            $"{_engine.UnexpectedResults} unexpected codes";
+        _matches.Text = _engine.Matches.ToString();
+        _rejects.Text = _engine.NonMatches.ToString();
+        _unexpected.Text = _engine.UnexpectedResults.ToString();
+        _quality.Text = _lastQuality?.ToString() ?? "—";
         if (!_busy && _engine.CooldownRemaining > TimeSpan.Zero)
             _status.Text = $"Status: Test cooldown — {Math.Ceiling(_engine.CooldownRemaining.TotalSeconds)}s remaining";
         else if (!_busy && _status.Text.StartsWith("Status: Test cooldown", StringComparison.Ordinal))
@@ -285,7 +288,12 @@ internal sealed class MainForm : Form
         UpdateUi();
     }
 
-    private void SetStatus(string message) => _status.Text = "Status: " + message;
+    private void SetStatus(string message)
+    {
+        _status.Text = message;
+        _graphic.Result = message.Contains("NO MATCH", StringComparison.Ordinal) || message.Contains("failed", StringComparison.OrdinalIgnoreCase) ? -1 : message.Contains("MATCH (0)", StringComparison.Ordinal) || message == "Enrollment complete." ? 1 : 0;
+        _graphic.Invalidate();
+    }
 
     private void Append(string message) =>
         _log.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
@@ -297,7 +305,7 @@ internal sealed class MainForm : Form
             e.Cancel = true;
             MessageBox.Show(this,
                 "A scan is running. Finish the scan or wait for the SDK timeout before closing.",
-                "HikFingerprint Lab V2", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "HikFingerprint Lab", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
         _timer.Stop();

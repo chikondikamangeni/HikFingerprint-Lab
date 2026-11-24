@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0] — draft
+
+- Redesigned dashboard with decorative scan animation and live session metrics.
+- Collapsible diagnostic log and custom application icon.
+- Existing fingerprint SDK, verification service and saved enrollment format unchanged.
+- Windows build and physical scanner regression tests required before release.
+
 ## [0.1.0] — 2026-11-24 (release candidate)
 
 - Windows Forms interface for fingerprint enrollment and SDK verification.

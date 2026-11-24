@@ -9,6 +9,10 @@ HikFingerprint Lab is an open-source **C# / .NET 8 Windows Forms** proof of conc
 > [!CAUTION]
 > **Not Windows Hello, not a WBDI driver, and not a Windows login or access-control product.** Do not depend on it for real-world authentication. The SDK's spoof resistance, failure rates, provenance and licensing requirements have not been independently validated. A positive or negative result in a few manual tests is not a security certification.
 
+## Interface
+
+The v0.2.0 candidate adds a compact dashboard, decorative scanning animation, separate session metrics, SDK quality reporting, and collapsible diagnostics. The graphic is illustrative and does not display actual fingerprint images.
+
 ## Features
 
 | Feature | Status |
