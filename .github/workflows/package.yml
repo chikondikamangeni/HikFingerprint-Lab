@@ -1,0 +1,85 @@
+name: Package (Windows x64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/v0.2.0-ui
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publication safety check
+        shell: pwsh
+        run: ./scripts/check-publication.ps1
+
+      - name: Publish Windows executable
+        shell: pwsh
+        run: |
+          dotnet publish ./HikFingerprintLabV2.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o "$env:RUNNER_TEMP/publish"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Publish failed."
+          }
+
+      - name: Package and generate checksum
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content ./HikFingerprintLabV2.csproj
+          $version = $project.Project.PropertyGroup.Version
+          $name = "HikFingerprint-Lab-v$version-win-x64.zip"
+          $output = "$env:RUNNER_TEMP/publish"
+          $dist = "$env:RUNNER_TEMP/dist"
+
+          $blocked = Get-ChildItem $output -Recurse -File |
+            Where-Object {
+              $_.Name -match 'FPModule|HCUSBSDK|HCNetSDK|libusb' -or
+              $_.Extension -in @('.dpapi','.key','.pfx','.dmp')
+            }
+
+          if ($blocked) {
+            throw "Prohibited files found in release output."
+          }
+
+          if (!(Test-Path "$output/HikFingerprintLabV2.exe")) {
+            throw "Expected executable not found."
+          }
+
+          New-Item -ItemType Directory -Force $dist | Out-Null
+
+          Compress-Archive -Path "$output/*" `
+            -DestinationPath "$dist/$name"
+
+          $hash = (Get-FileHash "$dist/$name" -Algorithm SHA256).Hash
+          "$hash  $name" | Set-Content "$dist/$name.sha256"
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: HikFingerprint-Windows-x64
+          path: ${{ runner.temp }}/dist/*
+          if-no-files-found: error
